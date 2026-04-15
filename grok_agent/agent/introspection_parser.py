@@ -27,9 +27,9 @@ class IntrospectionParser:
         # Command patterns for introspection
         self.patterns = {
             'list_modules': [
-                r'list.*your.*modul',       # catches modules, moduals, moduels, etc.
-                r'show.*your.*modul',
-                r'what.*modul.*do.*you.*have',
+                r'list.*your.*modules?',
+                r'show.*your.*modules?',
+                r'what.*modules.*do.*you.*have',
                 r'list.*your.*files?',
                 r'show.*your.*code.*files?',
                 r'give.*me.*all.*your.*files',
@@ -59,31 +59,33 @@ class IntrospectionParser:
                 r'open\s+([\w\s_-]+?)\s+in\s+notepad',
             ],
             'read_file': [
-                r'read.*your.*?([a-zA-Z_][\w\s]*)(?:\.py|\.pie|\s+dot\s+p[yi]e?)',
-                r'what.*is.*in.*your.*?([a-zA-Z_][\w\s]*)(?:\.py|\.pie|\s+dot\s+p[yi]e?)',
-                r'show.*contents.*of.*?([a-zA-Z_][\w\s]*)',
-                r'display.*?([a-zA-Z_][\w\s]*)(?:\.py|\.pie|\s+dot\s+p[yi]e?)',
+                r'read.*your.*?([\w_]+?)(?:\.py|\.pie)?(?:\s+file)?$',
+                r'what.*is.*in.*your.*?([\w_]+?)(?:\.py|\.pie)?(?:\s+file)?$',
+                r'show.*contents.*of.*?([\w_]+?)(?:\.py)?(?:\s+file)?$',
+                r'display.*?([\w_]+?)(?:\.py)(?:\s+file)?$',
             ],
             'module_info': [
-                r'structure.*of.*(\w+)',
-                r'what.*functions.*in.*(\w+)',
-                r'what.*does.*your.*(\w+).*do',
-                r'explain.*your.*(\w+).*module',
+                r'structure.*of.*?([\w_]+?)(?:\.py)?(?:\s+module)?$',
+                r'what.*functions.*in.*?([\w_]+?)(?:\.py)?(?:\s+module)?$',
+                r'what.*does.*your.*?([\w_]+?)(?:\.py)?\s+(?:module\s+)?do',
+                r'explain.*your.*?([\w_]+?)(?:\.py)?\s+module',
+                r'describe.*your.*?([\w_]+?)(?:\.py)?\s+module',
+                r'tell.*me.*about.*your.*?([\w_]+?)(?:\.py)?\s+module',
             ],
             'find_function': [
-                r'find.*function.*(\w+)',
-                r'where.*is.*function.*(\w+)',
-                r'show.*me.*function.*(\w+)',
+                r'find.*function.*?([\w_]+)$',
+                r'where.*is.*function.*?([\w_]+)$',
+                r'show.*me.*function.*?([\w_]+)$',
             ],
             'find_class': [
-                r'find.*class.*(\w+)',
-                r'where.*is.*class.*(\w+)',
-                r'show.*me.*class.*(\w+)',
+                r'find.*class.*?([\w_]+)$',
+                r'where.*is.*class.*?([\w_]+)$',
+                r'show.*me.*class.*?([\w_]+)$',
             ],
             'search_code': [
-                r'search.*your.*code.*for.*(\w+)',
-                r'find.*(\w+).*in.*your.*code',
-                r'where.*do.*you.*use.*(\w+)',
+                r'search.*your.*code.*for.*?([\w_]+)$',
+                r'find.*?([\w_]+).*in.*your.*code',
+                r'where.*do.*you.*use.*?([\w_]+)$',
             ],
             'system_overview': [
                 r'system.*overview',
@@ -96,6 +98,44 @@ class IntrospectionParser:
         
         logger.info("Introspection parser initialized")
     
+    def _find_module_in_message(self, message: str) -> Optional[str]:
+        """
+        Compare words in message against actual module names on disk.
+        Much more reliable than regex extraction.
+        Returns the matching module name (without .py) or None.
+        """
+        try:
+            modules = self.agent.list_my_modules()
+            if not modules:
+                return None
+
+            module_names = [m['name'].lower() for m in modules]
+            words = message.lower().replace('.py', '').replace('.pie', '').split()
+
+            # Direct word match
+            for word in words:
+                if word in module_names:
+                    return word
+
+            # Multi-word match — try joining consecutive words
+            # e.g. "action executor" -> "action_executor"
+            for i in range(len(words) - 1):
+                joined = f"{words[i]}_{words[i+1]}"
+                if joined in module_names:
+                    return joined
+
+            # Partial match — word is contained in a module name
+            for word in words:
+                if len(word) > 4:
+                    for name in module_names:
+                        if word in name:
+                            return name
+
+        except Exception as e:
+            logger.warning(f"_find_module_in_message failed: {e}")
+
+        return None
+
     def is_introspection_command(self, message: str) -> bool:
         """
         Check if message is an introspection command
@@ -136,23 +176,12 @@ class IntrospectionParser:
             if re.search(pattern, message_lower):
                 modules = self.agent.list_my_modules()
                 
-                # Check for EXCLUDE filter: "except for ones that start with X"
-                exclude_match = re.search(
-                    r'(?:except|excluding|not|without).*?(?:start|begin)(?:s|ing)?\s+with\s+(?:the\s+word\s+)?["\']?([a-zA-Z0-9_-]+)',
-                    message_lower
-                )
-                # Check for INCLUDE filter: "that start with X"
-                include_match = re.search(
-                    r'(?<!except\s)(?<!excluding\s)(?:start|begin)(?:s|ing)?\s+with\s+(?:the\s+word\s+)?["\']?([a-zA-Z0-9_-]+)',
-                    message_lower
-                ) if not exclude_match else None
-
-                if exclude_match:
-                    prefix = exclude_match.group(1).lower().rstrip('-')
-                    modules = [m for m in modules if not m['name'].lower().startswith(prefix)]
-                    response = f"Here are my modules (excluding ones that start with '{prefix}'):\n\n"
-                elif include_match:
-                    prefix = include_match.group(1).lower().rstrip('-')
+                # Check if user wants to filter by prefix (e.g., "files that start with pre")
+                prefix_match = re.search(r'(?:start|begin)(?:s|ing)?\s+with\s+(?:the\s+word\s+)?["\']?([a-zA-Z0-9_-]+)', message_lower)
+                if prefix_match:
+                    prefix = prefix_match.group(1).lower()
+                    # Remove trailing hyphen if present (e.g., "pre-" becomes "pre")
+                    prefix = prefix.rstrip('-')
                     modules = [m for m in modules if m['name'].lower().startswith(prefix)]
                     response = f"Here are my modules that start with '{prefix}':\n\n"
                 else:
@@ -184,7 +213,7 @@ class IntrospectionParser:
         for pattern in self.patterns['open_in_editor']:
             match = re.search(pattern, message_lower)
             if match:
-                filename = match.group(1)
+                filename = self._find_module_in_message(message_lower) or match.group(1)
                 
                 # Use introspection's open_file_in_editor method
                 if self.agent.introspection:
@@ -204,11 +233,10 @@ class IntrospectionParser:
         for pattern in self.patterns['read_file']:
             match = re.search(pattern, message_lower)
             if match:
-                filename = match.group(1).strip().replace(' ', '_')
+                filename = self._find_module_in_message(message_lower) or match.group(1)
                 file_data = self.agent.read_my_code(filename)
                 
                 if file_data:
-                    # Don't return the whole file - just summary
                     response = f"File: {file_data['filename']}\n"
                     response += f"Lines: {file_data['line_count']}\n"
                     response += f"Size: {file_data['size_kb']} KB\n\n"
@@ -221,38 +249,41 @@ class IntrospectionParser:
                 logger.info(f"Read file: {filename}")
                 return True, response
         
-        # Module info
+        # Module info — read actual code and send to Grok for intelligent analysis
         for pattern in self.patterns['module_info']:
             match = re.search(pattern, message_lower)
             if match:
-                module_name = match.group(1)
-                info = self.agent.get_my_module_info(module_name)
-                
-                if info:
-                    response = f"Module: {info['filename']}\n"
-                    response += f"Lines: {info['line_count']}\n"
-                    response += f"Size: {info['size_kb']} KB\n\n"
-                    
-                    if info['classes']:
-                        response += "Classes:\n"
-                        for cls in info['classes']:
-                            response += f"  • {cls['name']}"
-                            if cls['docstring']:
-                                response += f" - {cls['docstring']}"
-                            response += "\n"
-                        response += "\n"
-                    
-                    if info['functions']:
-                        response += "Functions:\n"
-                        for func in info['functions'][:10]:  # Limit to 10
-                            response += f"  • {func['name']}({func['params']})"
-                            if func['docstring']:
-                                response += f" - {func['docstring']}"
-                            response += "\n"
+                module_name = self._find_module_in_message(message_lower) or match.group(1)
+                file_data = self.agent.introspection.read_source_file(module_name)
+
+                if file_data:
+                    # Call Grok directly — bypass chat() to avoid saving augmented message to DB
+                    code_context = (
+                        f"The following is the complete source code of {file_data['filename']} "
+                        f"({file_data['line_count']} lines, {file_data['size_kb']} KB):\n\n"
+                        f"{file_data['content'][:6000]}"
+                    )
+                    if len(file_data['content']) > 6000:
+                        code_context += f"\n\n... (truncated, showing first 6000 chars of {file_data['line_count']} lines)"
+
+                    try:
+                        grok_response = self.agent.grok.chat_with_context(
+                            user_message=(
+                                f"{message}\n\n"
+                                f"[Here is the actual source code of {file_data['filename']} "
+                                f"to use for your answer:]\n\n{code_context}"
+                            ),
+                            conversation_history=[],
+                            system_prompt=self.agent.base_system_prompt
+                        )
+                        response = grok_response["choices"][0]["message"]["content"]
+                    except Exception as ge:
+                        logger.error(f"Grok call failed in introspection: {ge}")
+                        response = f"I read {file_data['filename']} but couldn't get a response from Grok: {ge}"
                 else:
-                    response = f"I couldn't find module {module_name}.py"
-                
-                logger.info(f"Got module info: {module_name}")
+                    response = f"I couldn't find {module_name}.py in my code folder."
+
+                logger.info(f"Sent module to Grok for analysis: {module_name}")
                 return True, response
         
         # Find function

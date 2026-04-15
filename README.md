@@ -1,12 +1,15 @@
 # Neximus
-AI agent with forever memory, self introspection and can control devices and equipment in real world touch
+AI agent with forever memory, self introspection and can control devices and equipment in real world
+
 > **DISCLAIMER:** Use this code at your own risk. Dredge Group is not responsible for any damages, data loss, or issues arising from the use of this software. This is provided as-is with no warranty.
-    For help you can go to dredgegroup.com and leave a message 
+> For help visit dredgegroup.com and leave a message.
+
 # Neximus AI Agent
 
 An embodied AI agent with persistent memory, voice control, Allen-Bradley PLC integration, and multi-agent collaboration. Built by Dredge Group.
-It is intended for Devs and Techs in the community to build on and expand the capabilities. the self code modification portion is not tested, but the existing code will allow it with some modifications.
- 
+
+Intended for developers and technicians to build on and expand. The self-code-modification capability is not fully tested but the existing introspection system provides the foundation for it.
+
 ---
 
 ## What It Does
@@ -14,12 +17,12 @@ It is intended for Devs and Techs in the community to build on and expand the ca
 Neximus is a local AI agent that runs on your PC and remembers everything. It connects a large language model (LLM) to a persistent memory system, voice I/O, and industrial automation hardware.
 
 - Remembers all past conversations across sessions using semantic vector search
-- Responds to voice commands via wake word detection
+- Responds to voice commands via voice interrupt detection
 - Controls Allen-Bradley PLCs — reads/writes tags, monitors programs, detects unauthorized changes
 - Integrates with iPhone via Siri Shortcuts
 - Reads and understands its own source code (self-introspection)
-- Collaborates with a second AI agent on a local network (PC2 running Lumina)
-- Runs a PI control loop at ~10ms cycle time while staying fully conversational
+- Collaborates with a second AI agent on a local network
+- Runs a PID control loop at ~10ms cycle time while staying fully conversational
 
 ---
 
@@ -56,9 +59,9 @@ Memory uses two stores in parallel:
 ### Software
 - Windows 10/11 64-bit
 - Python 3.11 to 3.13 (**do not use Python 3.14+** — PyAudio and several other dependencies do not yet support it)
-- PostgreSQL 14+ (port 5432)
+- PostgreSQL 14+ (port 5433 default)
 - Grok API key (xAI) — get one at console.x.ai
-- Porcupine access key (optional, for voice interrupt word) — picovoice.ai
+- Porcupine access key (optional, for voice interrupt) — picovoice.ai
 
 ### Hardware (Minimum)
 - CPU: Intel i5 / AMD Ryzen 5 or better
@@ -84,7 +87,7 @@ The easiest way is to use the installer:
 1. Put these files in one folder on a USB drive or network share:
    - `INSTALL_NEXIMUS.bat`
    - `neximus_installer.py`
-   - `grok_phase2/` (the agent folder)
+   - `grok_agent/` (the agent folder)
    - `piper tts/` (Piper TTS engine)
    - `grok_agent_03142026.sql` (database schema)
 
@@ -97,7 +100,7 @@ The easiest way is to use the installer:
    - Restores the PostgreSQL schema
    - Installs all Python packages
    - Patches config files for your PC
-   - Creates a desktop shortcut
+   - Creates desktop launchers
 
 ---
 
@@ -133,23 +136,28 @@ psql -U postgres -d grok_agent_db -f grok_agent_03142026.sql
 
 ### 5. Configure
 
-Copy `config/config.example.py` to `config/config.py` and fill in:
+Edit `config/config.py` and fill in your paths:
 
 ```python
-GROK_API_KEY = os.getenv("GROK_API_KEY", "")   # set in run_agent_gui.bat
+GROK_API_KEY = os.getenv("GROK_API_KEY", "")
 PIPER_EXE_PATH = r"C:\path\to\piper\piper.exe"
 PIPER_MODEL_PATH = r"C:\path\to\piper\en_GB-alan-medium.onnx"
-MICROPHONE_INDEX = 0                             # 0 = default mic
+MICROPHONE_INDEX = 0
 AGENT_SOURCE_PATH = r"C:\path\to\grok_agent\agent"
+USER_NAME = "YourName"
 ```
 
-### 6. Set environment variables
+### 6. Create a launcher bat file
 
-Copy `run_agent_gui.example.bat` to `run_agent_gui.bat` and add your keys:
+Create `run_agent_gui.bat` in the agent folder:
 
 ```batch
+@echo off
 SET GROK_API_KEY=your_key_here
 SET DB_PASSWORD=your_db_password_here
+cd /d "C:\path\to\grok_agent\agent"
+python main_gui.py
+pause
 ```
 
 ### 7. Launch
@@ -160,25 +168,11 @@ Double-click `run_agent_gui.bat`
 
 ## Naming Your Agent
 
-By default the agent is named **Neximus**. You can rename it to anything you want.
+Open **Settings → Identity** tab in the GUI. Enter your name and the agent name. Click Save. Restart the agent to apply.
 
-Open `agent/core.py` and find this line near the top of `__init__`:
+The agent name and your name are stored in `config/config.py` under `AGENT_DISPLAY_NAME` and `USER_NAME`.
 
-```python
-self.base_system_prompt = f"""You are {agent_name}, an embodied AI agent with persistent memory.
-
-You have the following capabilities:
-- Your name is NEXIMUS
-```
-
-Change `NEXIMUS` to whatever name you want. Also update `AGENT_NAME` and `AGENT_DISPLAY_NAME` in `config/config.py`:
-
-```python
-AGENT_NAME = "GrokAgent"        # internal name
-AGENT_DISPLAY_NAME = "Neximus"  # shown in GUI and spoken by TTS
-```
-
-The agent can also rename itself during conversation — just tell it its new name as a fact and it will use it going forward in responses.
+---
 
 ## Configuration
 
@@ -193,23 +187,25 @@ All settings are in `config/config.py`. Key settings:
 | `PIPER_MODEL_PATH` | Path to .onnx voice model |
 | `MICROPHONE_INDEX` | Mic device index (0 = default) |
 | `AGENT_SOURCE_PATH` | Path to agent/ folder for self-introspection |
+| `USER_NAME` | Your name — used by the agent when addressing you |
 | `PEER_URL` | IP:port of second agent for collaboration |
 
 ---
 
 ## Voice Commands
 
+See `NEXIMUS_COMMANDS.txt` for the full command reference.
+
 ### Memory
 - "What did we talk about yesterday?"
-- "What are my son's hobbies?"
 - "That's wrong, delete that" — removes last response from memory
 - "Forget that" — same
 
 ### Introspection
 - "List your modules"
 - "Open core.py"
-- "What are your local commands?"
-- "Search your code for Bailey"
+- "Explain your introspection module"
+- "Search your code for pycomm3"
 
 ### PLC
 - "Read tag Program:MainProgram.Motor_Run"
@@ -224,7 +220,7 @@ All settings are in `config/config.py`. Key settings:
 - "Remind me at 3pm to check the pump"
 
 ### iPhone (via Siri Shortcuts)
-- "Hey Siri, tell Neximus [anything]"
+- "Hey Siri, tell [agent name] [anything]"
 - All commands work the same way over HTTP
 
 ---
@@ -248,10 +244,10 @@ Supports Allen-Bradley ControlLogix, CompactLogix, and Micro800 via pycomm3 and 
 
 - Read/write tags by voice
 - Baseline program comparison — email alerts on unauthorized changes
-- PI control loop with configurable setpoint and gain
-- AI-to-AI physical control — Lumina (PC2) can send setpoints, Neximus writes to PLC
+- PID control loop with configurable setpoint and gain
+- AI-to-AI physical control — second agent can send setpoints, primary agent writes to PLC
 
-Tested on ControlLogix 1756-L71/B firmware 36.11 at 192.168.1.4.
+Tested on ControlLogix 1756-L71/B firmware 36.11.
 
 ---
 
@@ -260,7 +256,7 @@ Tested on ControlLogix 1756-L71/B firmware 36.11 at 192.168.1.4.
 The primary agent (PC1) and a second agent (PC2) communicate over HTTP on port 5000. Each agent runs independently and can send messages to the other. Used for:
 
 - AI peer review of responses
-- Distributed PLC control (Lumina generates setpoints, Neximus executes)
+- Distributed PLC control
 - Parallel processing of complex tasks
 
 Configure `PEER_URL` in `config/config.py` to your PC2 address.

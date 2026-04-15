@@ -265,8 +265,11 @@ When you reference past conversations, be natural about it - you inherently reme
                     for r in db_results:
                         c = r.get('matching_content', '')
                         logger.info(f"DB result: {c[:100]}")
-                        # Skip if empty, duplicate, matches current question, or is itself a question
+                        # Skip if empty, duplicate, from current conversation,
+                        # matches current question, or is itself a short question
                         if not c or c in seen_db:
+                            continue
+                        if str(r.get('id', '')) == str(self.current_conversation_id):
                             continue
                         c_lower = c.lower().strip()
                         if c_lower == user_message.lower().strip():
@@ -274,7 +277,8 @@ When you reference past conversations, be natural about it - you inherently reme
                         if len(c.split()) < 8 and c_lower.startswith(question_starters):
                             continue
                         seen_db.add(c)
-                        db_memories.append({'content': c, 'metadata': {'role': 'user'}})
+                        # Preserve actual role from DB result
+                        db_memories.append({'content': c, 'metadata': {'role': r.get('role', 'user')}})
                 except Exception as dbe:
                     logger.warning(f"DB search failed for '{word}': {dbe}")
 
@@ -613,7 +617,9 @@ When you reference past conversations, be natural about it - you inherently reme
         user_message: str, 
         use_context: bool = True,
         context_length: int = 10,
-        use_memory_search: bool = True
+        use_memory_search: bool = True,
+        skip_introspection: bool = False,
+        skip_actions: bool = False
     ) -> str:
         """
         Main chat interface with semantic memory
@@ -701,7 +707,7 @@ When you reference past conversations, be natural about it - you inherently reme
         user_embedding = self.embedder.generate_embedding(user_message)
         
         # Check for introspection commands FIRST (before action_executor)
-        if self.introspection_parser:
+        if self.introspection_parser and not skip_introspection:
             try:
                 was_introspection, response = self.introspection_parser.parse_and_execute(user_message)
                 if was_introspection and response:
@@ -742,9 +748,9 @@ When you reference past conversations, be natural about it - you inherently reme
 
         
         # Phase 4: Check and execute action commands
-        action_result = self.action_executor.process_command(user_message)
+        action_result = None if skip_actions else self.action_executor.process_command(user_message)
         
-        if action_result['executed']:
+        if action_result and action_result['executed']:
             logger.info(f"Action: {action_result.get('action')} {action_result.get('target')}")
             
             # Don't save action commands to conversation history

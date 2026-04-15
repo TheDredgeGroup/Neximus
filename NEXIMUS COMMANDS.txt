@@ -1,0 +1,150 @@
+NEXIMUS AI AGENT - VOICE COMMAND REFERENCE
+==========================================
+Dredge Group
+==========================================
+
+SELF-INTROSPECTION COMMANDS
+----------------------------
+These commands make Neximus read and analyze its own source code.
+
+FILE & MODULE LISTING
+  "List your modules"
+  "Show your modules"
+  "What modules do you have"
+  "List your files"
+  "Show your code files"
+  "Give me all your files"
+  "Give me your files"
+  "Show all your files"
+  "What files do you have"
+  "Show me a list of all the files"
+  "List all the files in your folder"
+  "Show files in the agent folder"
+  "What files are in your folder"
+
+  FILTER BY PREFIX:
+  "List your files starting with [prefix]"
+  "Show files starting with the word [prefix]"
+  Example: "List your files starting with plc"
+
+OPEN FILES IN EDITOR
+  "Open [filename].py"
+  "Show me [filename].py"
+  "Edit [filename].py"
+  "Open [filename] dot py"         (handles Siri transcription)
+  "Open [filename] dot pie"        (handles Siri transcription)
+  "Open [filename] in notepad"
+  "Open [filename] in an editor"
+  Example: "Open core.py"
+  Example: "Open action executor dot py"
+
+OPEN AGENT FOLDER
+  "Open your folder"
+  "Show me where you live"
+  "Where are you located"
+  "Open your code folder"
+  "Show your location"
+  "Where is your code"
+
+READ FILE CONTENTS
+  "Read your [filename].py"
+  "What is in your [filename].py"
+  "Show contents of [filename]"
+  "Display [filename].py"
+  Example: "Read your core.py"
+
+MODULE STRUCTURE INFO
+  "Structure of [module]"
+  "What functions in [module]"
+  "What does your [module] do"
+  "Explain your [module] module"
+  Example: "What functions in memory search"
+
+FIND FUNCTION
+  "Find function [name]"
+  "Where is function [name]"
+  "Show me function [name]"
+  Example: "Find function chat"
+
+FIND CLASS
+  "Find class [name]"
+  "Where is class [name]"
+  "Show me class [name]"
+  Example: "Find class GrokAgent"
+
+SEARCH CODE
+  "Search your code for [keyword]"
+  "Find [keyword] in your code"
+  "Where do you use [keyword]"
+  Example: "Search your code for pycomm3"
+
+SYSTEM OVERVIEW
+  "System overview"
+  "What is your structure"
+  "How are you built"
+  "Show me your architecture"
+  "What are you made of"
+
+
+MEMORY COMMANDS
+---------------
+  "What did we talk about yesterday"
+  "What did we talk about last week"
+  "What did we discuss on [day]"
+  "Show me conversations from [date]"
+  "What was our last conversation"
+  "Most recent conversation"
+  "Earlier today we..."
+  "Do you remember [topic]"
+  "That's wrong" / "Forget that" / "Delete that"  -- removes last bad response from memory
+  "That is incorrect" / "That was wrong"           -- same
+
+
+PLC COMMANDS
+------------
+  "Read tag [tagname]"
+  "Write [value] to tag [tagname]"
+  "Write [value] to [tagname]"
+  "PLC status"
+  "Connect to PLC"
+  "Read [tagname]"
+  "What is the value of [tagname]"
+
+
+REMINDER COMMANDS
+-----------------
+  "Remind me at [time] to [task]"
+  "Set a reminder for [time]"
+  "Schedule [task] for [time]"
+  "Remind me every day at [time] to [task]"
+
+
+BROWSER & APP COMMANDS
+-----------------------
+  "Open Google"
+  "Open YouTube"
+  "Open [website]"
+  "Search for [query]"          -- opens browser search
+  "YouTube search [query]"
+  "Open Notepad"
+  "Open calculator"
+  "Open [application name]"
+
+  NOTE: "Search your [database/memory/code]" will NOT open a browser.
+  These are routed internally to the memory system.
+
+
+VOICE INTERRUPT
+---------------
+  Say the configured interrupt word (default: "terminator") to stop
+  Neximus mid-speech. Configured via Porcupine access key in config.py.
+
+
+NOTES
+-----
+- Commands are not case sensitive
+- Siri transcription variations are handled automatically
+  (.pie, .p y, dot py all work)
+- Spaces in filenames are converted to underscores automatically
+  ("action executor dot py" opens "action_executor.py")
+- For updates and support visit dredgegroup.com
