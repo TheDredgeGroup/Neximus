@@ -1,5 +1,5 @@
 # Neximus
-AI agent with forever memory, self introspection and can control devices and equipment in real world
+AI agent with forever memory, self introspection and can control devices and equipment in the real world
 
 > **DISCLAIMER:** Use this code at your own risk. Dredge Group is not responsible for any damages, data loss, or issues arising from the use of this software. This is provided as-is with no warranty.
 > For help visit dredgegroup.com and leave a message.
