@@ -265,9 +265,8 @@ Configure `PEER_URL` in `config/config.py` to your PC2 address.
 
 ## License
 
-AGPL-3.0 for personal and research use.
-Commercial license available — contact Dredge Group.
-
+MIT License- free for personal and commercial use.
+See LICENSE file for details 
 ---
 
 ## About
