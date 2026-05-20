@@ -235,7 +235,10 @@ class ActionExecutor:
         
         # Browser lock flag - set to False to disable all browser/app actions
         self.enabled = True
-        
+
+        # Zigbee manager — set by core.py after startup
+        self.zigbee_manager = None
+
         logger.info("ActionExecutor initialized")
         
         # Phase 5: Initialize browser controller if available
@@ -762,6 +765,40 @@ class ActionExecutor:
         Returns:
             Dict with processing result
         """
+        # --- Zigbee voice command routing ---
+        if self.zigbee_manager:
+            try:
+                if self.zigbee_manager.handle_voice_command(user_message):
+                    return {'executed': True, 'success': True, 'action': 'zigbee', 'target': user_message, 'method': 'zigbee'}
+            except Exception as _ze:
+                logger.error(f"Zigbee voice command error: {_ze}")
+
+        # --- Camera tracking voice commands ---
+        # Explicit trigger phrases only - prevents accidental activation from conversation
+        try:
+            from agent.camera_tracker import get_tracker, initialize_tracker
+            _msg_lower = user_message.lower().strip()
+
+            if "stop tracking system" in _msg_lower:
+                _t = get_tracker()
+                if _t and _t.is_running():
+                    _t.stop()
+                return {'executed': True, 'success': True, 'action': 'tracker_stop', 'method': 'camera'}
+
+            if "start tracking system" in _msg_lower:
+                _t = get_tracker()
+                if not _t:
+                    _t = initialize_tracker()
+                if not _t.is_running():
+                    _t.set_mode_face()
+                    _t.start()
+                return {'executed': True, 'success': True, 'action': 'tracker_start', 'method': 'camera'}
+
+        except ImportError:
+            pass
+        except Exception as _ce:
+            logger.error(f"Camera tracker voice command error: {_ce}")
+
         # Browser lock check
         if not self.enabled:
             return {'executed': False, 'reason': 'browser_locked'}
