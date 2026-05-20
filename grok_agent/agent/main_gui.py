@@ -79,7 +79,7 @@ def main():
         print("âœ“ Embedding generator ready")
         
         print("ðŸ’¾ Initializing memory search...")
-        memory = initialize_memory_search(persist_directory="./memory_store")
+        memory = initialize_memory_search(persist_directory="./memory_store", grok_client=grok)
         print("âœ“ Memory search ready")
         
         # ==========================================
@@ -139,7 +139,7 @@ def main():
         if grok.test_connection():
             print("âœ“ Grok API connection successful")
         else:
-            print("âœ— Grok API connection failed")
+            print("✗ Grok API connection failed")
             return
         
         # Show memory stats
@@ -169,6 +169,11 @@ def main():
         from agent.plc_parser import initialize_plc_parser
         plc_parser = initialize_plc_parser(chore_db, plc_comm)
         print("âœ“ PLC parser ready")
+
+        print("Initializing GitHub parser...")
+        from agent.github_parser import initialize_github_parser
+        github_parser = initialize_github_parser(agent)
+        print("GitHub parser ready")
         
         # Introspection parser already attached to agent above
         # (No need to reinitialize here)
@@ -192,7 +197,8 @@ def main():
             voice=voice,
             plc_comm=plc_comm,
             scheduler=scheduler,
-            chore_db_inst=chore_db
+            chore_db_inst=chore_db,
+            github_parser=github_parser
         )
         print(f"âœ“ Web server running on http://{local_ip}:5000")
         print(f"  iPhone Shortcut URL: http://{local_ip}:5000/transcript")
@@ -228,7 +234,8 @@ def main():
             scheduler=scheduler,
             reminder_parser=reminder_parser,
             plc_parser=plc_parser,
-            introspection_parser=introspection_parser
+            introspection_parser=introspection_parser,
+            github_parser=github_parser
         )
         
         # Give web server the GUI reference so iPhone transcripts appear in chat
