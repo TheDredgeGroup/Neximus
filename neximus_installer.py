@@ -28,6 +28,8 @@ AGENT_REL = "agent"
 PACKAGES = [
     "sentence-transformers",
     "chromadb",
+    "mem0ai",
+    "qdrant-client",
     "SpeechRecognition",
     "openai-whisper",
     "gtts",
