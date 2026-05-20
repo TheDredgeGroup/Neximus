@@ -126,12 +126,13 @@ class MemorySearch:
                     "on_disk": True,
                 }
             },
-            # Use a custom LLM wrapper that routes through our existing claude_client
+            # Grok API is OpenAI-compatible — use openai provider with xAI base URL
             "llm": {
-                "provider": "anthropic",
+                "provider": "openai",
                 "config": {
-                    "model": "claude-haiku-4-5-20251001",  # Cheapest Claude for fact extraction
-                    "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+                    "model": "grok-3-fast",
+                    "api_key": os.environ.get("GROK_API_KEY", ""),
+                    "openai_base_url": "https://api.x.ai/v1",
                     "temperature": 0,
                     "max_tokens": 2000,
                 }
