@@ -18,7 +18,8 @@ class AgentGUI:
     """GUI for the Grok Agent"""
     
     def __init__(self, agent, voice_interface, chore_db=None, plc_comm=None, 
-                 scheduler=None, reminder_parser=None, plc_parser=None, introspection_parser=None):
+                 scheduler=None, reminder_parser=None, plc_parser=None, introspection_parser=None,
+                 github_parser=None):
         """
         Initialize GUI
         
@@ -30,6 +31,7 @@ class AgentGUI:
             scheduler: SchedulerService instance (optional)
             reminder_parser: ReminderParser instance (optional, for natural language reminders)
             plc_parser: PLCParser instance (optional, for natural language PLC commands)
+            github_parser: GitHubParser instance (optional, for GitHub repo browsing)
         """
         self.agent = agent
         self.voice = voice_interface
@@ -39,6 +41,7 @@ class AgentGUI:
         self.reminder_parser = reminder_parser
         self.plc_parser = plc_parser
         self.introspection_parser = introspection_parser
+        self.github_parser = github_parser
         
         self.voice_mode = False
         self.running = True
@@ -689,7 +692,16 @@ class AgentGUI:
                     if self.voice.voice_output_enabled:
                         self.voice.speak(response)
                     return
-            
+
+            # Check for GitHub command (works with AI off - no API call needed)
+            if self.github_parser and self.github_parser.is_github_request(message):
+                was_github, response = self.github_parser.process_message(message, self.agent)
+                if was_github and response:
+                    self.message_queue.put(("Agent", response, "#ffffff"))
+                    if self.voice.voice_output_enabled:
+                        self.voice.speak(response)
+                    return
+
             if self.reminder_parser and self.reminder_parser.is_reminder_request(message):
                 was_reminder, response = self.reminder_parser.process_message(message, self.agent)
                 if was_reminder and response:
@@ -720,7 +732,19 @@ class AgentGUI:
             
             # Normal message processing
             response = self.agent.chat(message)
-            
+
+            # Scan agent's own response through PLC parser
+            # Allows Neximus to execute PLC commands he generates himself
+            if self.plc_parser and response:
+                try:
+                    if self.plc_parser.is_plc_request(response):
+                        logger.info(f"[Self-scan] PLC match found in agent response: {response[:80]}")
+                        self.plc_parser.process_message(response, None)  # None = skip agent.chat() confirmation loop
+                    else:
+                        logger.debug("[Self-scan] No PLC match in agent response")
+                except Exception as e:
+                    logger.error(f"[Self-scan] PLC parser error: {e}", exc_info=True)
+
             # Display agent response
             self.message_queue.put(("Agent", response, "#ffffff"))
             
@@ -813,18 +837,54 @@ class AgentGUI:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Add to database as a stored document
-            # For now, just send as a message with special prefix
-            message = f"[DOCUMENT TO REMEMBER]\n{content}"
+            # Store document — bypasses all parsers, goes straight to agent.chat()
+            threading.Thread(target=self._process_database_document, args=(content, file_path), daemon=True).start()
             
-            threading.Thread(target=self._process_message, args=(message,), daemon=True).start()
-            
-            self.add_message("System", f"Added document to database: {file_path.split('/')[-1]}", "#00ff00")
+            self.add_message("System", f"Adding document to database: {file_path.split('/')[-1]}", "#00ff00")
             
         except Exception as e:
             logger.error(f"Error dropping file on database: {e}")
             messagebox.showerror("Error", f"Failed to add document: {e}")
     
+    def _process_database_document(self, content, file_path):
+        """
+        Store a dropped document into memory — bypasses ALL parsers and memory search.
+        Sends the content to agent.chat() with an explicit instruction to store it as
+        a fact, not to analyze or chat about it.
+        """
+        try:
+            filename = file_path.split('\\')[-1].split('/')[-1]
+            self.message_queue.put(("You", f"[Database drop — {filename} — {len(content)} chars]", "#00aaff"))
+
+            if not self.agent.ai_enabled:
+                self.message_queue.put(("System", "AI is off. Turn on AI to store documents.", "#ff4444"))
+                return
+
+            store_message = (
+                f"[STORE THIS IN MEMORY AS FACT]\n"
+                f"The following document was dropped into your database. "
+                f"Read it, extract the key facts, and confirm what you've stored.\n\n"
+                f"Filename: {filename}\n\n"
+                f"{content}"
+            )
+
+            response = self.agent.chat(
+                store_message,
+                skip_introspection=True,
+                skip_actions=True,
+                skip_time_recall=True,
+                use_memory_search=False
+            )
+
+            self.message_queue.put(("Agent", response, "#ffffff"))
+
+            if self.voice.voice_output_enabled:
+                self.voice.speak(response)
+
+        except Exception as e:
+            logger.error(f"Error processing database document: {e}")
+            self.message_queue.put(("Error", str(e), "#ff0000"))
+
     def _on_drop_chat(self, event):
         """Handle file drop on chat zone"""
         try:
@@ -839,8 +899,8 @@ class AgentGUI:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Send as message
-            threading.Thread(target=self._process_message, args=(content,), daemon=True).start()
+            # Send as document — bypasses all parsers, goes straight to agent.chat()
+            threading.Thread(target=self._process_document, args=(content,), daemon=True).start()
             
             self.add_message("System", f"Sent document as message: {file_path.split('/')[-1]}", "#00ff00")
             
@@ -848,6 +908,47 @@ class AgentGUI:
             logger.error(f"Error dropping file on chat: {e}")
             messagebox.showerror("Error", f"Failed to send document: {e}")
     
+    def _process_document(self, content):
+        """
+        Process a dropped document — bypasses ALL parsers (introspection, PLC, GitHub,
+        reminder, action_executor) and sends the raw content straight to agent.chat().
+        Used for code analysis, document review, and any large text drop where parser
+        interception would corrupt or misdirect the content.
+        """
+        try:
+            self.message_queue.put(("You", f"[Document dropped — {len(content)} chars]", "#00aaff"))
+
+            if not self.agent.ai_enabled:
+                self.message_queue.put(("System", "AI is off. Turn on AI to analyze documents.", "#ff4444"))
+                return
+
+            response = self.agent.chat(
+                content,
+                skip_introspection=True,
+                skip_actions=True,
+                skip_time_recall=True,
+                use_memory_search=False
+            )
+
+            # Scan agent's own response through PLC parser (same as _process_message)
+            if self.plc_parser and response:
+                try:
+                    if self.plc_parser.is_plc_request(response):
+                        self.plc_parser.process_message(response, None)
+                except Exception as e:
+                    logger.error(f"[Self-scan] PLC parser error in document: {e}")
+
+            self.message_queue.put(("Agent", response, "#ffffff"))
+
+            if self.voice.voice_output_enabled:
+                self.voice.speak(response)
+
+            self._send_to_peer(response)
+
+        except Exception as e:
+            logger.error(f"Error processing document: {e}")
+            self.message_queue.put(("Error", str(e), "#ff0000"))
+
     def add_message(self, sender, message, color='#ffffff'):
         """
         Add message to chat display (thread-safe)
