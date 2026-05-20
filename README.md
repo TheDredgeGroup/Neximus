@@ -16,11 +16,12 @@ Intended for developers and technicians to build on and expand. The self-code-mo
 
 Neximus is a local AI agent that runs on your PC and remembers everything. It connects a large language model (LLM) to a persistent memory system, voice I/O, and industrial automation hardware.
 
-- Remembers all past conversations across sessions using semantic vector search
+- Remembers all past conversations across sessions using semantic vector search and fact extraction
 - Responds to voice commands via voice interrupt detection
 - Controls Allen-Bradley PLCs — reads/writes tags, monitors programs, detects unauthorized changes
 - Integrates with iPhone via Siri Shortcuts
 - Reads and understands its own source code (self-introspection)
+- Browses its own GitHub repository by voice — list files, read code, view commits and issues
 - Collaborates with a second AI agent on a local network
 - Runs a PID control loop at ~10ms cycle time while staying fully conversational
 
@@ -33,24 +34,27 @@ User Input (GUI / Voice / iPhone)
          |
     Message Router (core.py)
          |
-  ┌──────┴──────────────────────┐
-  |                             |
-Parser Chain                Grok API
-- Time-based recall         - Build context
-- Introspection             - Semantic memory search
-- Action executor           - PostgreSQL keyword search
-- Reminder parser           - Get response
-- PLC parser                |
-  |                    Save to DB + ChromaDB
-  └──────────────────────────┘
+  ┌──────┴──────────────────────────────┐
+  |                                     |
+Parser Chain                        Grok API
+- Time-based recall                 - Build context
+- Introspection                     - Semantic memory search
+- Action executor                   - PostgreSQL keyword search
+- Reminder parser                   - Get response
+- PLC parser                        |
+- GitHub parser              Save to DB + Memory Stack
+  |                                     |
+  └─────────────────────────────────────┘
          |
     Return to user
     (GUI / TTS / iPhone)
 ```
 
-Memory uses two stores in parallel:
-- **PostgreSQL** — full text storage, keyword search
-- **ChromaDB** — 384-dim vector embeddings for semantic search (all-MiniLM-L6-v2)
+Memory uses three stores in parallel:
+
+- **Qdrant** — primary vector store, fast semantic search on raw messages
+- **Mem0** — fact extraction layer, distills key facts from conversations for long-term recall
+- **ChromaDB** — legacy backup, dual-write for safety during transition
 
 ---
 
@@ -66,7 +70,7 @@ Memory uses two stores in parallel:
 ### Hardware (Minimum)
 - CPU: Intel i5 / AMD Ryzen 5 or better
 - RAM: 16GB minimum, 32GB recommended
-- Storage: 20GB free (models + ChromaDB + logs)
+- Storage: 20GB free (models + memory stores + logs)
 - Microphone: any USB or built-in mic
 - Internet connection for Grok API calls
 
@@ -109,7 +113,7 @@ The easiest way is to use the installer:
 ### 1. Clone the repo
 
 ```
-git clone https://github.com/dredgegroup/neximus.git
+git clone https://github.com/thedredgegroup/neximus.git
 cd neximus
 ```
 
@@ -207,6 +211,14 @@ See `NEXIMUS_COMMANDS.txt` for the full command reference.
 - "Explain your introspection module"
 - "Search your code for pycomm3"
 
+### GitHub Repo Browser
+- "Go to the GitHub repo" — lists root contents
+- "Open grok_agent" — navigate into a folder
+- "Read memory_search.py" — fetch and summarize a file
+- "Show recent commits"
+- "Show open issues"
+- "Go back" — navigate up one level
+
 ### PLC
 - "Read tag Program:MainProgram.Motor_Run"
 - "Write 1 to tag Motor_Enable"
@@ -227,14 +239,18 @@ See `NEXIMUS_COMMANDS.txt` for the full command reference.
 
 ## Memory System
 
-Neximus uses a hybrid memory approach:
+Neximus uses a triple-layer memory stack for reliable long-term recall:
 
-1. **Semantic search** — ChromaDB finds past conversations by meaning
-2. **Answer-flipped search** — Searches for answers, not just similar questions
-3. **PostgreSQL keyword search** — Finds exact text matches as a fallback
-4. **Forget command** — "That's wrong" / "Forget that" deletes bad responses from ChromaDB
+1. **Qdrant vector search** — primary store, finds semantically similar raw messages by embedding
+2. **Mem0 fact extraction** — distills key facts from every conversation, stores them as discrete searchable memories
+3. **ChromaDB** — legacy backup store, dual-write for safety
+4. **PostgreSQL keyword search** — finds exact text matches as a fallback
+5. **Forget command** — "That's wrong" / "Forget that" removes bad responses from all stores
 
-Memory persists in `./memory_store/` (ChromaDB) and PostgreSQL.
+Memory persists across sessions in three local folders:
+- `./memory_store/` — ChromaDB
+- `./memory_store_qdrant/` — Qdrant vectors
+- `./memory_store_mem0/` — Mem0 extracted facts
 
 ---
 
@@ -265,8 +281,9 @@ Configure `PEER_URL` in `config/config.py` to your PC2 address.
 
 ## License
 
-MIT License- free for personal and commercial use.
-See LICENSE file for details 
+MIT License — free for personal and commercial use.
+See LICENSE file for details.
+
 ---
 
 ## About
