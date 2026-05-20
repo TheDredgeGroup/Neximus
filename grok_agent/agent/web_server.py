@@ -24,6 +24,7 @@ app = Flask(__name__)
 agent = None
 plc_parser = None
 reminder_parser = None
+github_parser = None
 voice = None
 chore_db = None
 plc_comm = None
@@ -31,13 +32,14 @@ scheduler = None
 gui = None
 collaborate_enabled = False  # AI collaboration toggle
 
-def set_components(agent_inst, plc_parser_inst, reminder_parser_inst, 
-                   voice_inst, plc_comm_inst, scheduler_inst, gui_inst=None, chore_db_inst=None):
+def set_components(agent_inst, plc_parser_inst, reminder_parser_inst,
+                   voice_inst, plc_comm_inst, scheduler_inst, gui_inst=None, chore_db_inst=None, github_parser_inst=None):
     """Set global component references"""
-    global agent, plc_parser, reminder_parser, voice, plc_comm, scheduler, gui, chore_db
+    global agent, plc_parser, reminder_parser, github_parser, voice, plc_comm, scheduler, gui, chore_db
     agent = agent_inst
     plc_parser = plc_parser_inst
     reminder_parser = reminder_parser_inst
+    github_parser = github_parser_inst
     voice = voice_inst
     plc_comm = plc_comm_inst
     scheduler = scheduler_inst
@@ -157,6 +159,13 @@ def transcript():
             if was_introspection and response:
                 print(f"🔍 Introspection command executed")
         
+        # Check for GitHub command
+        if not response and github_parser and github_parser.is_github_request(text):
+            logger.info("Processing as GitHub request")
+            was_github, response = github_parser.process_message(text, agent)
+            if was_github and response:
+                print(f"GitHub command executed")
+
         # Check for action command (browser/search) - runs even when AI is off
         if not response and hasattr(agent, 'action_executor'):
             action_result = agent.action_executor.process_command(text)
@@ -173,7 +182,16 @@ def transcript():
         if not response:
             logger.info("Processing as normal chat")
             response = agent.chat(text)
-        
+
+        # Scan Neximus's response for PLC commands (iPhone path)
+        if response and plc_parser:
+            try:
+                if plc_parser.is_plc_request(response):
+                    logger.info(f"[Self-scan /transcript] PLC match: {response[:80]}")
+                    plc_parser.process_message(response, None)
+            except Exception as e:
+                logger.error(f"[Self-scan /transcript] Error: {e}")
+
         print(f"🤖 Agent: {response}")
         print(f"{'='*60}\n")
         
@@ -287,6 +305,25 @@ def agent_message():
             collab_write_done = False
             tag_name_str = ''
             write_value = 0.0
+
+            # Scan for natural language PLC commands from peer agent
+            if plc_parser:
+                try:
+                    if plc_parser.is_plc_request(text):
+                        plc_parser.process_message(text, agent)
+                except Exception:
+                    pass
+
+            # Scan for GitHub commands from peer agent
+            if github_parser:
+                try:
+                    if github_parser.is_github_request(text):
+                        was_github, github_response = github_parser.process_message(text, agent)
+                        if was_github and github_response:
+                            response = github_response
+                except Exception:
+                    pass
+
             try:
                 import re as _re
                 fmt = None
@@ -329,8 +366,9 @@ def agent_message():
                 logger.warning(f"Collaborate format parse error: {e}")
 
             # Normal peer chat - use Grok if available, fallback ack if not
+            # Skip if GitHub parser already handled this message
             grok_available = getattr(agent, 'ai_enabled', True)
-            if grok_available:
+            if grok_available and not response:
                 try:
                     response = agent.chat(f"{sender} says: {text}", use_memory_search=True)
                     # If response indicates offline, treat as unavailable
@@ -338,6 +376,15 @@ def agent_message():
                         grok_available = False
                 except Exception:
                     grok_available = False
+
+            # Scan Neximus's response for PLC commands (Lumina path)
+            if response and plc_parser:
+                try:
+                    if plc_parser.is_plc_request(response):
+                        logger.info(f"[Self-scan /agent_message] PLC match: {response[:80]}")
+                        plc_parser.process_message(response, None)
+                except Exception as e:
+                    logger.error(f"[Self-scan /agent_message] Error: {e}")
 
             if not grok_available:
                 if collab_write_done and tag_name_str:
@@ -436,13 +483,13 @@ def status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def start_web_server_thread(agent, plc_parser, reminder_parser, voice, plc_comm, scheduler, gui=None, chore_db_inst=None):
+def start_web_server_thread(agent, plc_parser, reminder_parser, voice, plc_comm, scheduler, gui=None, chore_db_inst=None, github_parser=None):
     """
     Start Flask web server in a background thread
     Called from main_gui.py to run alongside the GUI
     """
     # Set component references
-    set_components(agent, plc_parser, reminder_parser, voice, plc_comm, scheduler, gui, chore_db_inst)
+    set_components(agent, plc_parser, reminder_parser, voice, plc_comm, scheduler, gui, chore_db_inst, github_parser)
     
     # Start Flask in daemon thread so it exits when main program exits
     def run_server():
