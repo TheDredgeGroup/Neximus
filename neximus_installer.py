@@ -106,7 +106,7 @@ class NeximusInstaller(tk.Tk):
         self.grok_api_key  = tk.StringVar()
         self.db_password   = tk.StringVar()
         self.db_name       = tk.StringVar(value="grok_agent_db")
-        self.db_port       = tk.StringVar(value="5433")
+        self.db_port       = tk.StringVar(value="5432")
         self.pg_bin        = tk.StringVar(value=detect_pg_bin())
         self.mic_index     = tk.StringVar(value="0")
 
@@ -806,6 +806,47 @@ class NeximusInstaller(tk.Tk):
                 except Exception as e:
                     self.log(f"  ERROR installing pyaudio: {e}", 'err')
                     failed.append("pyaudio")
+
+            # Playwright — install package then download Chromium browser
+            if not self.cancel_event.is_set():
+                self.log(">> Installing Playwright...", 'hdr')
+                self.after(0, lambda: self._pkg_cur.config(
+                    text="Installing Playwright...", fg=CYAN))
+                try:
+                    proc = subprocess.Popen(
+                        [sys.executable, "-m", "pip", "install", "playwright", "--no-cache-dir"],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, bufsize=1)
+                    for line in proc.stdout:
+                        line = line.rstrip()
+                        if line:
+                            self.log(f"  {line}")
+                    proc.wait()
+                    if proc.returncode == 0:
+                        self.log("  OK: playwright", 'ok')
+                        # Now install Chromium browser binary
+                        self.log(">> Installing Playwright Chromium browser...", 'hdr')
+                        self.after(0, lambda: self._pkg_cur.config(
+                            text="Downloading Chromium browser (~120MB)...", fg=CYAN))
+                        proc2 = subprocess.Popen(
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, bufsize=1)
+                        for line in proc2.stdout:
+                            line = line.rstrip()
+                            if line:
+                                self.log(f"  {line}")
+                        proc2.wait()
+                        if proc2.returncode == 0:
+                            self.log("  OK: Chromium installed", 'ok')
+                        else:
+                            self.log("  FAILED: Chromium download - browser features may not work", 'warn')
+                    else:
+                        self.log("  FAILED: playwright - browser features may not work", 'warn')
+                        failed.append("playwright")
+                except Exception as e:
+                    self.log(f"  ERROR installing playwright: {e}", 'err')
+                    failed.append("playwright")
 
             def finish():
                 if failed:
